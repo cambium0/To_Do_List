@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ToDo List</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+    <script>
+
+        var updates = { "session_id": -1, "data": [] }
+        var current_list = ""
+
+        function make_vis() {
+            var list_form = document.getElementById('item_form_row')
+            if (list_form.style['display'] == "none") {
+                list_form.style['display'] = "block";
+            }
+        }
+
+        function set_listName(name) {
+            name_field = document.getElementById('list_name')
+            if (name == 'new') {
+                var now = new Date();
+                mdy = (now.getMonth() + 1) + '/' + (now.getDate()) + '/' + now.getFullYear()
+                default_name = "My_To-Do_List_for_" + mdy
+                name_field.value = default_name
+            }
+            else {
+                name_field.value = name
+            }
+        }
+
+        function set_register_button() {
+            var my_button = document.getElementById('registin_button');
+            if (my_button.innerHTML == "Login") {
+                document.getElementById('registin_button').innerHTML = "Register";
+                document.getElementById('register-flag').value = 'register';
+                document.getElementById('login_form').action = "{{url_for('do_register')}}"
+            }
+            else if (my_button.innerHTML == "Register") {
+                document.getElementById('registrin').innerHTML = "Login";
+                document.getElementById('register-flag').value = 'login'
+                document.getElementById('login_form').action = "{{url_for('do_login')}}"
+            }
+        }
+
+        function remove_registin_form() {
+            document.getElementById('registered_query').style.display = "none"
+            document.getElementById('switch_button').style.display = "none"
+            document.getElementById('user_email').style.display = "none"
+            document.getElementById('user_password').style.display = "none"
+            document.getElementById('registin_button').style.display = "none"
+            document.getElementById('logged_in_tag').style.display = "inline"
+        }
+
+        function show_save_button() {
+            document.getElementById('submit_json_data').style.display = "inline";
+            document.getElementById('newlist_button').style.display = "inline";
+            document.getElementById('logout_button').style.display = "inline";
+        }
+
+        function process_item_form(sender) {
+            document.getElementById('json_field').value = JSON.stringify(data)
+        }
+
+        function prep_json() {
+            updates['session_id'] = data['session_id']
+            document.getElementById('json_data').value = JSON.stringify(updates)
+            return true
+        }
+
+        // reads the list items currently displayed in the main ui and writes them as dictionaries into the 'data' json in memory
+        function add_item_to_data() {
+            var item_record = {}
+            var due_date = ""
+            var the_name;
+            var my_form = document.getElementById('item_form')
+            for (i=0; i< my_form.elements.length; i++) {
+                element = my_form.elements[i]
+                if (element.getAttribute('type') == "radio") {
+                    if (element.checked) {
+                        item_record["item_category"] = element.value
+                    }
+                }
+                else if (element.name.length > 0) {
+                    item_record[element.name] = element.value
+                }
+            }
+
+                data['data'].unshift(item_record)
+                item_record['action'] = "insert"
+                updates['data'].unshift(item_record)
+
+            new_li = document.createElement('li')
+            new_li.setAttribute('class', "list-group-item")
+            new_box = document.createElement('checkbox')
+            a_box = document.getElementById('item_chkbx')
+            new_box = a_box.cloneNode(true)
+            new_box.style.display = "inline-block"
+            an_item = document.getElementById('field_template')
+            new_item = an_item.cloneNode(true)
+            new_item.style.display = "inline-block"
+            new_item.value = item_record['list_input']
+            delete_x = document.getElementById('red_ex')
+            new_x = delete_x.cloneNode(true)
+            new_x.style.display = "inline-block"
+            new_li.appendChild(new_box)
+            new_li.appendChild(new_item)
+            new_li.appendChild(new_x)
+            the_ul = document.getElementById('todo_list_ul')
+            the_ul.appendChild(new_li)
+            my_form.reset()
+            document.getElementById('list_name').value = item_record['list_name']
+            document.getElementById('list_input').focus()
+            return false;
+        }
+
+        function make_list_item(record) {    //record is just the string that is the content of the list
+            var l_input = record['list_input']
+            new_li = document.createElement('li')
+            new_li.setAttribute('class', "list-group-item")
+            a_box = document.getElementById('item_chkbx')
+            new_box = a_box.cloneNode(true)
+            new_box.style.display = "inline-block"
+            an_item = document.getElementById('field_template')
+            new_item = an_item.cloneNode(true)
+            new_item.style.display = "inline-block"
+            new_item.value = l_input
+            if (record['item_done'] == "True") {
+                new_box.setAttribute('checked', "true")
+                new_item.style.textDecoration = "line-through"
+            }
+            delete_x = document.getElementById('red_ex')
+            new_x = delete_x.cloneNode(true)
+            new_x.style.display = "inline-block"
+            due_span = document.createElement('span')
+            due_span.setAttribute('class', 'due_date')
+            due_span.innerHTML = record['date_due']
+            due_span.setAttribute('display', 'inline-block')
+            new_li.appendChild(new_box)
+            new_li.appendChild(new_item)
+            new_li.appendChild(due_span)
+            new_li.appendChild(new_x)
+
+            liForm = document.getElementById('li_form')
+            the_ul = document.getElementById('todo_list_ul')
+            if (record['item_done'] == "False") {
+                liForm.after(new_li)
+            }
+            else {
+                the_ul.appendChild(new_li)
+            }
+
+        }
+
+        function delete_item(x_obj) {
+            list_name = document.getElementById('list_name').value
+            li_tag = x_obj.parentElement
+            list_text = li_tag.children[1].value
+            entry = ""
+            answer = window.confirm("Are you sure you want to delete the entry " + list_text + "?")
+            if (answer) {
+                for (var i=0;i<data['data'].length;i++) {
+                    entry = data['data'][i]
+                    if (entry['list_input'] == list_text) {
+                        if (entry['list_name'] == list_name) {
+                            alert("Deleting " + list_text)
+                            entry['action'] = 'delete'
+                            updates['data'].unshift(entry)
+                            li_tag.remove()
+                        }
+                        else {
+                        }
+                    }
+                }
+            }
+            else {
+                return false
+            }
+        }
+
+        function populate_sidebar() {
+
+            var list_names = [];
+
+            for (var i = 0; i < data['data'].length; i++) {
+                list_names.push(data['data'][i]['list_name'])
+            }
+
+            const lists = new Set(list_names)
+            my_lists = Array.from(lists);
+
+            current_list = my_lists[my_lists.length-1]
+
+            for (var i=0; i < my_lists.length; i++) {
+                //medallion = ""
+                s_tag = document.createElement('span')
+                s_tag.setAttribute('onClick',"load_list('" + my_lists[i] + "')")
+                s_tag.innerHTML = my_lists[i]
+                an_li = document.getElementById('sidebar_generic')
+                new_li = an_li.cloneNode(true)
+                new_li.style.display = "inline-block"
+                new_li.appendChild(s_tag)
+                /*
+                if (a_list[i] == current_list) {
+                    medallion = document.createElement('img')
+                    medallion.setAttribute('src', "{{ url_for('static', filename='images/medallion.png') }}")
+                    new_li.appendChild(medallion)
+                }
+                */
+                sidebarList = document.getElementById('sidebar_list')
+                sidebarList.appendChild(new_li)
+            }
+
+        }
+
+        function populate_ui() {
+
+            var list_names = [];
+
+            for (var i = 0; i < data['data'].length; i++) {
+                list_names.push(data['data'][i]['list_name'])
+            }
+
+            const lists = new Set(list_names)
+            my_lists = Array.from(lists);
+
+            current_list = my_lists[my_lists.length-1]
+
+            if (current_list) {
+                set_listName(current_list)
+            }
+
+            if (my_lists.length > 1) {
+                populate_sidebar(my_lists);
+            }
+
+            document.getElementById('list_name').value = current_list
+
+            for (var n = 0; n < data['data'].length; n++) {
+                if (data['data'][n]['list_name'] == current_list) {
+                    make_list_item(data['data'][n])
+                }
+            }
+
+        }
+
+        function load_list(listName) {
+            deselected_list = document.getElementById('list_name').value
+            //first *remove* existing list items, if any (other than the display: none prototype)
+            ui_list = document.getElementById('todo_list_ul')
+            num_li = ui_list.getElementsByTagName('LI').length - 1
+            li_tags = ui_list.getElementsByTagName('LI')
+
+            for (var i=num_li;i>=1;i--) {
+                try {
+                    ui_list.removeChild(li_tags[i])
+                } catch (error) {
+                    console.error(error)
+                    continue
+                }
+            }
+
+
+            //load the selected list in the main ui
+            document.getElementById('list_name').value = listName
+
+            for (var n = 0; n < data['data'].length; n++) {
+                if (data['data'][n]['list_name'] == listName) {
+                    make_list_item(data['data'][n])
+                }
+            }
+
+
+            //highlight current list in sidebar
+            sidebar_items = document.getElementById('sidebar_list')
+            for (var i=0;i<sidebar_items.children.length;i++) {
+                list_span = sidebar_items.children[i].children[0]
+                if (typeof list_span == 'undefined' || list_span == null) {
+                    continue
+                }
+                if (list_span.textContent == listName) {
+                    list_span.style.color = 'cyan'
+                }
+                else {
+                    //list_span.style.setProperty('color', '#cbcb9a;')
+                    list_span.style.color = 'gold'
+                }   
+            }
+            
+            
+
+/*
+            //*remove* the selected list link from the sidebar
+            sidebar_list = document.getElementById('sidebar_list')
+            sidebar_items = sidebar_list.getElementsByTagName('LI')
+            for (var i=0;i<sidebar_items.length;i++) {
+                if (sidebar_items[i].firstChild != null && sidebar_items[i].firstChild.innerHTML == listName) {
+                    sidebar_list.removeChild(sidebar_items[i])
+                    break;
+                }
+            }
+
+
+            //load the deselected list NAME in the sidebar, linked to open itself in the main ui if clicked
+            sidebarList = document.getElementById('sidebar_list')
+            s_tag = document.createElement('span')
+            s_tag.setAttribute('onClick',"load_list('" + deselected_list + "')")
+            s_tag.innerHTML = deselected_list
+            an_li = document.getElementById('sidebar_generic')
+            new_li = an_li.cloneNode(true)
+            new_li.style.display = "inline-block"
+            new_li.appendChild(s_tag)
+            sidebarList = document.getElementById('sidebar_list')
+            sidebarList.appendChild(new_li)
+*/
+        }
+
+        function mark_list_item(checkbx) {
+            an_li = checkbx.parentNode
+            li_field = checkbx.nextSibling
+            todo_list = document.getElementById('todo_list_ul')
+            li_field.style.textDecoration = 'line-through'
+            todo_list.removeChild(an_li)
+            todo_list.appendChild(an_li)
+
+            //set item_done==True in local json
+            record = ""
+            for (var i=0;i<data['data'].length;i++) {
+                if (data['data'][i]['list_name'] == document.getElementById('list_name').value) {
+                    data['data'][i]['item_done'] = 'True'
+                    data['data'][i]['action'] = "update"
+                    record = data['data'][i]
+                }
+            }
+            //set item_done and action=upload in upload json
+            record_present = "no"
+            for (var i=0;i<updates['data'].length;i++) {
+                if (updates['data'][i]['list_name'] == document.getElementById('list_name').value) {
+                    updates['data'][i]['action'] = "update"
+                    updates['data'][i]['item_done'] = "True"
+                    record_present = "yes"
+                }
+            }
+            if (record_present == "no") {
+                updates['data'].unshift(record)
+            }
+        }
+
+        function do_newlist() {
+            // remove any list items aside from the first item, which is the item form (works with > 2, don't know why)
+            if (typeof the_ul !== 'undefined') {
+                while (the_ul.childNodes.length > 2) {
+                    the_ul.removeChild(the_ul.lastChild);
+                }
+            }
+            // put links to lists in the sidebar
+            populate_sidebar();
+            // put generic listName in name field
+            set_listName('new');
+        }
+
+    </script>
+
+    <style>
+        .sidebar {
+            background: #343434;
+            foreground: #777777;
+        }
+        .main_list {
+            background: #baac99;
+            foreground: #dddaaa;
+        }
+        .main_title {
+            background: #38bb7a;
+            foreground: #afafaf;
+            margin: 30px 0px 30px 0px;
+        }
+        .td_item {
+            background: #ccccff;
+        }
+        .item_form {
+            display: inline-block;
+        }
+        .main_list_item {
+            margin: 10px 0px 20px 0px;
+            font-size: 25px;
+            font-style: sans-serif;
+            border: 0;
+            outline: 0;
+        }
+        .larger {
+            width: 35px;
+            height: 35px;
+        }
+        .entered_item {
+            border: 0px;
+            outline: 0px;
+            margin: 0px 6px 0px 6px;
+            font-size: 18px;
+        }
+        .right_end_item {
+            float: right;
+            position: relative;
+            margin: 4px;
+            filter: blur(3px);
+            -webkit-filter: blur(3px);
+        }
+        .right_end_item:hover {
+            filter: non;
+            -webkit-filter: none;
+        }
+        .sidebar_item {
+            color: #cbcb9a;
+            margin: 20px 10px 20px 10px;
+        }
+        .due_date {
+            font-size: 12px;
+            line-height: 16px;
+            padding: 0 7px;
+            background: #eee;
+            border: 1px solid transparent;
+            color: #665;
+            white-space: nowrap;
+            border-radius: 12px;
+            vertical-align: middle;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="row">
+        <div class="col-xl-12 main_title" style="border-radius: 10px;">
+            <h1>ToDoLister</h1>
+        </div>
+    </div>
+   <div class="row">
+       <div class="col-md-12 main_list">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+              <div class="container-fluid">
+                <a class="navbar-brand" href="#">List Name: </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                  <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                  <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                      <!--
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Dropdown
+                        </a>
+
+                      <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                        <li><a class="dropdown-item" href="#">Action</a></li>
+                        <li><a class="dropdown-item" href="#">Another action</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#">Something else here</a></li>
+                      </ul>
+
+                    </li>
+                      -->
+                      <li><input id="list_name" form="item_form" name="list_name" class="form-control me-2" type="text" placeholder="your-list-name" size="28" style="border: 0px; outline: 0px;">
+                      <li><button class="btn btn-outline-success" type="button" id="newlist_button" style="display: none; margin-left: 5px; margin-right: 5px;" onclick="do_newlist();">New list</button></li>
+                      <li><form class="d-flex" action="{{ url_for('save_list_items') }}"  id="send_data_form" onSubmit="prep_json()" method="POST">
+                      <input type="hidden" name="json_data" id="json_data">
+                      <button class="btn btn-outline-success" type="submit" id="submit_json_data" style="display: none;">Save list</button>
+                  </form>
+</li>
+                    </ul>
+                  <span class="navbar-brand" id="logged_in_tag" style="display: none;">You are logged in!</span>
+                  <span class="navbar-brand" id="registered_query">Not registered?&nbsp;</span>
+                  <button class="btn btn-outline-success" type="button" id="switch_button" style="margin-right: 6px;" onclick="set_register_button();">Register!</button>
+                  <form class="d-flex" action="{{ url_for('do_login') }}" id='login_form' onSubmit="process_item_form(this)" method="POST">
+                      <input class="form-control me-2" type="email" name="user_email" id="user_email" placeholder="email" aria-label="email">
+                      <input class="form-control me-2" type="password" name="user_password" id="user_password" placeholder="password" aria-label="password">
+                      <input type="hidden" name="register-flag" id="register-flag" value="login">
+                      <input type="hidden" name="json_field" id="json_field">
+                      <button class="btn btn-outline-success" type="submit" id="registin_button">Login</button>
+                  </form>
+                  <form class="d-flex" action="{{ url_for('logout') }}"  id="logout_form" method="POST">
+                      <button class="btn btn-outline-success" type="submit" id="logout_button" style="display: none;">Logout</button>
+                  </form>
+<script>
+    var data = JSON.parse('{{ data|tojson }}')
+    var session_id = data["session_id"]
+    if (session_id != -1) {
+        remove_registin_form()
+        show_save_button()
+    }
+</script>
+                </div>
+              </div>
+            </nav>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-3 sidebar">
+            <ul id="sidebar_list" class="sidebar_list">
+                <li id="sidebar_generic" class="sidebar_item" style="display: none;"></li>
+            </ul>
+        </div>
+        <div class="col-md-9">
+            <div class="list_content" id="item_form_div">
+                     <ul class="list-group list-group-flush" id="todo_list_ul">
+                        <li id="li_form" class="list-group-item">
+                            <div class="container">
+                 <form id="item_form">
+                               <div class="row" style="margin: 0px; padding=2px;">
+                                   <div class="col-sm-11" style="display: inline; text-align: center;">
+                                         <input type="text" class="main_list_item" id="list_input" name="list_input" size="60" onKeyUp="make_vis()" placeholder="Write your next task here" style="margin: 10px 0px 20px 0px; font-size: 25px; font-style: sans-serif; border: 0; outline: 0;">
+                                    </div>
+                                </div>
+                                <div class="row" id="item_form_row" style="white-space: nowrap; background: #bebe99; padding: 6px; border-radius: 10px; margin-right: 0px; display: none;">
+                                    <div class="col-sm-3 item_form" style="text-align: center;">
+                                        <h4>Due Date</h4>
+                                            <input type="date" id="date-picker" name="date_due">
+                                    </div>
+                                    <div class="col-sm-3 item_form" style="text-align: center;">
+                                        <h4>Work Left (hrs)</h4>
+                                        <input type="text" placeholder="1-999" size="3" id="hours_left" name="hours_left" maxlength="3"> hours left
+                                    </div>
+                                    <div class="col-sm-3 item_form" style="display: inline-block;">
+                                        <h4>Category</h4>
+                                        <div class="form-check">
+                                          <input class="form-check-input" type="radio" name="item_category" value="home" id="home_goal">
+                                          <label class="form-check-label" for="home_goal">
+                                            Home
+                                          </label>
+                                        </div>
+                                        <div class="form-check">
+                                          <input class="form-check-input" type="radio" name="item_category" value="work-school" id="work-school_goal">
+                                          <label class="form-check-label" for="work-school_goal">
+                                            Work / School
+                                          </label>
+                                        </div>
+                                        <div class="form-check">
+                                          <input class="form-check-input" type="radio" name="item_category" id="life_goal" value="life" checked>
+                                          <label class="form-check-label" for="life_goal">
+                                              Life
+                                          </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-3 item_form" style="text-align: center;">
+                                        <button type="button" id="item_submit" class="btn btn-outline-success"  onClick="add_item_to_data()" id="hidden_submit">Submit</button>
+                                    </div>
+                                    <input type="checkbox" id="item_chkbx" class="large" title="mark item done" onClick="mark_list_item(this)" style="display: none;">
+                                    <input type="text" id="field_template" class="entered_item" size="66" style="display: none;">
+                                    <img src="{{ url_for('static', filename='images/delete.png') }}" id="red_ex" class="right_end_item" width="20" height="20" onClick="delete_item(this)" title="Delete this entry" style="display: none;">
+                                </div>
+                </form>
+                <script>
+                            if (data['data'].length > 0) {
+                                populate_ui();
+                            }
+                </script>
+                            </div>
+                        </li>
+                    </ul>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
