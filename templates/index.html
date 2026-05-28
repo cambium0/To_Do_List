@@ -9,13 +9,31 @@
 
         var updates = { "session_id": -1, "data": [] }
         var current_list = ""
+	var new_lists = []
+        //var new_list_item { 'list_name': null, 'status':null }
+        //var status = { 'null':null, 'created': 'created', 'stored': 'stored'}
 
         function make_vis() {
+	    // Get today's date in YYYY-MM-DD format
+	    const today = new Date().toISOString().split('T')[0];
+
+	    // Set the 'min' attribute of the input to today
+	    document.getElementById('date-picker').setAttribute('min', today);
+
+	   // zero-out any value in id='hours_left'
+
+	    document.getElementById('hours_left').value = ""
+
             var list_form = document.getElementById('item_form_row')
             if (list_form.style['display'] == "none") {
                 list_form.style['display'] = "block";
             }
         }
+
+	function make_invis() {
+	    var list_form = document.getElementById('item_form_row')
+	    list_form.style['display'] = "none";
+	}
 
         function set_listName(name) {
             name_field = document.getElementById('list_name')
@@ -23,11 +41,21 @@
                 var now = new Date();
                 mdy = (now.getMonth() + 1) + '/' + (now.getDate()) + '/' + now.getFullYear()
                 default_name = "My_To-Do_List_for_" + mdy
-                name_field.value = default_name
+                if (name == "get_new") {
+			return name
+		}
+		else {
+			//name_field.value = default_name
+			name_field.value = prompt("Enter a custom list name or use the default.", default_name)
+			new_lists.push(name_field.value)
+		}
             }
             else {
-                name_field.value = name
+                //name_field.value = name.replaceAll("'", "\\'")
             }
+
+	    name_field.select()
+
         }
 
         function set_register_button() {
@@ -63,23 +91,132 @@
             document.getElementById('json_field').value = JSON.stringify(data)
         }
 
+        function alert_json() {
+            updates['session_id'] = data['session_id']
+            document.getElementById('json_data').value = JSON.stringify(updates)
+	    alert(document.getElementById('json_data').value)
+            return true
+        }
+
         function prep_json() {
             updates['session_id'] = data['session_id']
             document.getElementById('json_data').value = JSON.stringify(updates)
             return true
         }
 
+async function doFetch(li_index) {
+
+  if (updates['data'].length == 0) {
+    return false
+  }
+
+  updates['session_id'] = data['session_id']
+
+  document.getElementById('json_data').value = JSON.stringify(updates)
+
+  url = "https://www.cambiumsoftware.com/flask_app_2/save_items"
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST', // Use POST for sending data
+      body: JSON.stringify(updates), // Convert JS object to JSON string
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json', // Required for Flask to recognize JSON
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json(); // Parse the server's response
+    
+    console.log('Success:', result);
+
+    //check for new list items and take action
+
+    if (new_lists.length > 0) { 
+        handle_new_lists()
+    }
+
+    updates = { 'session_id': data['session_id'], 'data': [] }
+    
+
+  } catch (error) {
+    console.error('Error:', error);
+  }
+
+}
+
+
+	function handle_new_lists() {
+		unique_lists = Array.from(new Set(new_lists));
+		for (let i = unique_lists.length = 1; i >= 0; i--) {
+			var match = false
+			for (const item of updates['data']) {
+				if (unique_lists[i] == item['list_name']) {
+					match = true
+				}
+			}
+			if (!match) {
+				unique_lists.splice(i, 1)
+			}
+		}
+		
+
+		if (unique_lists.length == 0) { return }
+		else {
+			//for (const listname of unique_lists) {
+				//
+			//}
+
+			sidebar_list = document.getElementById('sidebar_list')
+			num_li = sidebar_list.getElementsByTagName('LI').length - 1
+			li_tags = sidebar_list.getElementsByTagName('LI')
+
+			for (var i=num_li;i>=1;i--) {
+				try {
+					sidebar_list.removeChild(li_tags[i])
+				} catch (error) {
+					console.error(error)
+					continue
+				}
+			}	
+
+			populate_sidebar()				
+	
+		}
+		
+	}
+
         // reads the list items currently displayed in the main ui and writes them as dictionaries into the 'data' json in memory
+
         function add_item_to_data() {
+
+            //check to see that there's a value in id='list_name'
+            if (document.getElementById('list_name').value.trim() === "") {
+		default_list_name = set_listName('get_new')
+		answer = confirm("A list name is required. Use the default: " + default_list_name + " or resubmit after creating a custom list name?")
+		if (answer) {
+			set_listName('new')
+		}
+		else {
+			alert("ok enter your list name then click this save button again.")
+			document.getElementById('list_name').select()
+			return false
+		}
+	    } 
             var item_record = {}
             var due_date = ""
+	    var hours_left = ""
             var the_name;
             var my_form = document.getElementById('item_form')
             for (i=0; i< my_form.elements.length; i++) {
                 element = my_form.elements[i]
                 if (element.getAttribute('type') == "radio") {
                     if (element.checked) {
-                        item_record["item_category"] = element.value
+                         item_record["item_category"] = element.value
                     }
                 }
                 else if (element.name.length > 0) {
@@ -87,9 +224,9 @@
                 }
             }
 
-                data['data'].unshift(item_record)
+                data['data'].push(item_record)
                 item_record['action'] = "insert"
-                updates['data'].unshift(item_record)
+                updates['data'].push(item_record)
 
             new_li = document.createElement('li')
             new_li.setAttribute('class', "list-group-item")
@@ -112,10 +249,13 @@
             my_form.reset()
             document.getElementById('list_name').value = item_record['list_name']
             document.getElementById('list_input').focus()
+            
+	    make_invis();
+
             return false;
         }
 
-        function make_list_item(record) {    //record is just the string that is the content of the list
+        function make_list_item(record) {    //record is just the dictionary that is the content of the list
             var l_input = record['list_input']
             new_li = document.createElement('li')
             new_li.setAttribute('class', "list-group-item")
@@ -125,11 +265,35 @@
             an_item = document.getElementById('field_template')
             new_item = an_item.cloneNode(true)
             new_item.style.display = "inline-block"
+	    new_item.style.borderRadius = "12px"
+            hrs_lft = calculate_hours_left(record['date_due'])
+            hours_span = document.createElement('span')
+
+	    if (hrs_lft <= 6 && hrs_lft > 4) {
+		new_item.style.backgroundColor = "#ffff0044"
+		hours_span.style.color = "#ffff00"
+	    }
+	    else if (hrs_lft <= 2 && hrs_lft > 0) {
+	        new_item.style.backgroundColor = "#ff000088"
+		hours_span.style.color = "#ff0000"
+	    }
+	    else if (hrs_lft <= 4 && hrs_lft > 2) {
+		new_item.style.backgroundColor = "#FFA50088"
+		hours_span.style.color = "#ffa500"
+	    }
+	    else if (hrs_lft == 0) {
+		new_item.style.backgroundColor = "#FFC0CB66"
+	        hours_span.style.color = "FFC0CB"
+	    }
+
             new_item.value = l_input
+	    
             if (record['item_done'] == "True") {
                 new_box.setAttribute('checked', "true")
                 new_item.style.textDecoration = "line-through"
+	        new_item.style.backgroundColor = "#0000FF44"
             }
+
             delete_x = document.getElementById('red_ex')
             new_x = delete_x.cloneNode(true)
             new_x.style.display = "inline-block"
@@ -137,9 +301,15 @@
             due_span.setAttribute('class', 'due_date')
             due_span.innerHTML = record['date_due']
             due_span.setAttribute('display', 'inline-block')
+	    due_span.setAttribute('title', 'date due')
+            hours_span.setAttribute('class', 'due_date')
+            hours_span.innerHTML = hrs_lft
+	    hours_span.setAttribute('title', 'hours left')
+            hours_span.setAttribute('display', 'inline-block')
             new_li.appendChild(new_box)
             new_li.appendChild(new_item)
             new_li.appendChild(due_span)
+	    new_li.appendChild(hours_span)
             new_li.appendChild(new_x)
 
             liForm = document.getElementById('li_form')
@@ -150,6 +320,26 @@
             else {
                 the_ul.appendChild(new_li)
             }
+
+        }
+
+        function calculate_hours_left(date_field) {
+	    var my_date = ""
+	    if (typeof date_field === 'string') {
+	        my_date = date_field
+	    }
+	    else {
+                my_date = date_field.value
+	    }
+	    const offsetInMilliseconds = new Date().getTimezoneOffset() * 60000
+	    hours_left = ((new Date(my_date).getTime() - Date.now() + offsetInMilliseconds) / 3600000)
+	    document.getElementById('hours_left').value = Math.floor(hours_left)
+	    if (hours_left > 0) {
+	        return Math.floor(hours_left)
+	    }
+	    else {
+	        return 0
+	    }
 
         }
 
@@ -181,35 +371,50 @@
 
         function populate_sidebar() {
 
-            var list_names = [];
+	    var list_names = []
 
             for (var i = 0; i < data['data'].length; i++) {
                 list_names.push(data['data'][i]['list_name'])
             }
 
+	
             const lists = new Set(list_names)
             my_lists = Array.from(lists);
-
             current_list = my_lists[my_lists.length-1]
+            sidebarList = document.getElementById('sidebar_list')
+            next_index = 1
 
             for (var i=0; i < my_lists.length; i++) {
                 //medallion = ""
                 s_tag = document.createElement('span')
-                s_tag.setAttribute('onClick',"load_list('" + my_lists[i] + "')")
+                //s_tag.setAttribute('onClick',"load_list('" + my_lists[i] + "')")
+                s_tag.setAttribute('onClick',`load_list(${JSON.stringify(my_lists[i])}, ${next_index})`)
                 s_tag.innerHTML = my_lists[i]
+	        if (i == my_lists.length - 1) {
+			s_tag.style.color = "cyan"
+	    	}
                 an_li = document.getElementById('sidebar_generic')
                 new_li = an_li.cloneNode(true)
                 new_li.style.display = "inline-block"
+		new_li.style.width = "100%"
+		trash_img = document.createElement('img')
+		trash_img.setAttribute('src',"/static_2/images/trash.png")
+		//trash_img.setAttribute('onClick',`delete_list(${JSON.stringify(my_lists[i])})`)
+		trash_img.setAttribute('onClick',`delete_list(${JSON.stringify(my_lists[i])}, ${next_index})`)
+		//trash_img.setAttribute('onClick', 'delete_list(new_li)')
+		trash_img.style.marginLeft = "0"
+		trash_img.style.marginRight = "4px"
+	        new_li.appendChild(trash_img)
                 new_li.appendChild(s_tag)
-                /*
+              /*  
                 if (a_list[i] == current_list) {
                     medallion = document.createElement('img')
-                    medallion.setAttribute('src', "{{ url_for('static', filename='images/medallion.png') }}")
+                    medallion.setAttribute('src', "/static_2/images/medallion.png")
                     new_li.appendChild(medallion)
                 }
-                */
-                sidebarList = document.getElementById('sidebar_list')
+             */   
                 sidebarList.appendChild(new_li)
+                next_index++;
             }
 
         }
@@ -217,6 +422,7 @@
         function populate_ui() {
 
             var list_names = [];
+
 
             for (var i = 0; i < data['data'].length; i++) {
                 list_names.push(data['data'][i]['list_name'])
@@ -245,7 +451,7 @@
 
         }
 
-        function load_list(listName) {
+        function load_list(listName, li_index) {
             deselected_list = document.getElementById('list_name').value
             //first *remove* existing list items, if any (other than the display: none prototype)
             ui_list = document.getElementById('todo_list_ul')
@@ -273,13 +479,17 @@
 
 
             //highlight current list in sidebar
+	    //current_span = document.getElementById('sidebar_list').children[li_index]
+	    
             sidebar_items = document.getElementById('sidebar_list')
-            for (var i=0;i<sidebar_items.children.length;i++) {
-                list_span = sidebar_items.children[i].children[0]
-                if (typeof list_span == 'undefined' || list_span == null) {
-                    continue
-                }
-                if (list_span.textContent == listName) {
+            for (var i=1;i<sidebar_items.children.length;i++) {
+                list_span = sidebar_items.children[i].children[1]
+                //if (typeof list_span == 'undefined' || list_span == null) {
+                    //continue
+                //}
+
+
+                if (listName == document.getElementById('sidebar_list').children[i].textContent) {
                     list_span.style.color = 'cyan'
                 }
                 else {
@@ -320,15 +530,19 @@
             an_li = checkbx.parentNode
             li_field = checkbx.nextSibling
             todo_list = document.getElementById('todo_list_ul')
-            li_field.style.textDecoration = 'line-through'
-            todo_list.removeChild(an_li)
-            todo_list.appendChild(an_li)
+            li_field.style.textDecoration = li_field.style.textDecoration == 'line-through' ? 'none' : 'line-through'
+            if (li_field.style.textDecoration == 'line-through') {
+		todo_list.removeChild(an_li)
+            	todo_list.appendChild(an_li)
+	    }
+	    item_text = li_field.value
+	    //alert("'item_text' is " + item_text + ", li_field is " + li_field)
 
-            //set item_done==True in local json
+            //toggle item_done in local json
             record = ""
             for (var i=0;i<data['data'].length;i++) {
-                if (data['data'][i]['list_name'] == document.getElementById('list_name').value) {
-                    data['data'][i]['item_done'] = 'True'
+                if (data['data'][i]['list_name'] == document.getElementById('list_name').value && data['data'][i]['list_input'] == item_text) {
+                    data['data'][i]['item_done'] = data['data'][i]['item_done'] == 'True' ? 'False' : 'True'
                     data['data'][i]['action'] = "update"
                     record = data['data'][i]
                 }
@@ -336,9 +550,9 @@
             //set item_done and action=upload in upload json
             record_present = "no"
             for (var i=0;i<updates['data'].length;i++) {
-                if (updates['data'][i]['list_name'] == document.getElementById('list_name').value) {
+                if (updates['data'][i]['list_name'] == document.getElementById('list_name').value && updates['data'][i]['list_input'] == item_text) {
                     updates['data'][i]['action'] = "update"
-                    updates['data'][i]['item_done'] = "True"
+                    updates['data'][i]['item_done'] = updates['data'][i]['item_done'] == 'True' ? 'False' : 'True'
                     record_present = "yes"
                 }
             }
@@ -355,18 +569,78 @@
                 }
             }
             // put links to lists in the sidebar
-            populate_sidebar();
+            // populate_sidebar();
             // put generic listName in name field
-            set_listName('new');
+               set_listName('new');
+               	     
         }
 
-    </script>
+	async function query_save() {
+	    if (updates['data'].length > 0) {
+		userAccepted = confirm("This app is *stateless*. You must save your changes to keep them. Click Ok to save or Cancel to just logout.")
+		if (userAccepted) {
+	            alert("Ok! Submitting your changes then logging you out.")
+
+		    const response = await doFetch()
+
+		    const data = await response.json();
+
+		    alert("All done! Logging you out.")
+
+		    return true
+		}
+		else {
+		    return true
+		}
+	    }
+	}
+	
+	function delete_list(list_name, li_index) {
+
+	    data_length = data['data'].length
+
+	    for (let i = data_length - 1; i >=0; i--) {
+		if (data['data'][i]['list_name'] == list_name) {
+	            let item = data['data'].splice(i, 1)
+		    updates['data'].push(item[0])
+		}
+	    }	
+
+	    updates['data'].forEach((element) => {
+		if (element['list_name'] == list_name) {
+		    element['action'] = 'delete'
+		}
+	    })
+		
+
+	    if (document.getElementById('sidebar_list').children[li_index].children[1].style.color == 'cyan') {
+        	ul = document.getElementById('todo_list_ul');
+        	ul.replaceChildren(ul.firstElementChild);
+	    }
+	    //else {
+		//alert("document.getElementById('sidebar_list').children[li_index].children[1].style.color != 'cyan'; li_index is " + li_index)
+	    //}   
+                                            
+	    document.getElementById('sidebar_list').children[li_index].remove()
+
+	    document.getElementById('list_name').value = ""
+
+	    doFetch()
+
+	}
+
+    </script> 
 
     <style>
         .sidebar {
             background: #343434;
             foreground: #777777;
         }
+	.sidebar_list {
+	    margin: 0;
+	    padding: 0;
+	    list-style-type: none;
+	}
         .main_list {
             background: #baac99;
             foreground: #dddaaa;
@@ -411,16 +685,18 @@
             -webkit-filter: none;
         }
         .sidebar_item {
-            color: #cbcb9a;
-            margin: 20px 10px 20px 10px;
+            color: gold;
+            margin: 4px 10px 20px 10px;
         }
         .due_date {
-            font-size: 12px;
+            font-size: 14px;
+            font-weight: bold;
             line-height: 16px;
-            padding: 0 7px;
-            background: #eee;
+	    margin: 0px 5px 10px 5px;
+            padding: 3px;
+            background: #99f;
+	    color: #666;
             border: 1px solid transparent;
-            color: #665;
             white-space: nowrap;
             border-radius: 12px;
             vertical-align: middle;
@@ -432,7 +708,7 @@
 <div class="container">
     <div class="row">
         <div class="col-xl-12 main_title" style="border-radius: 10px;">
-            <h1>ToDoLister</h1>
+            <h1 style="display: inline-block;">ToDoLister</h1>&nbsp;<h5>(version 1.1)</h5>
         </div>
     </div>
    <div class="row">
@@ -460,11 +736,12 @@
 
                     </li>
                       -->
-                      <li><input id="list_name" form="item_form" name="list_name" class="form-control me-2" type="text" placeholder="your-list-name" size="28" style="border: 0px; outline: 0px;">
+                      <li><input id="list_name" form="item_form" name="list_name" class="form-control me-2" type="text" readonly size="28" style="border: 0px; outline: 0px;">
                       <li><button class="btn btn-outline-success" type="button" id="newlist_button" style="display: none; margin-left: 5px; margin-right: 5px;" onclick="do_newlist();">New list</button></li>
-                      <li><form class="d-flex" action="{{ url_for('save_list_items') }}"  id="send_data_form" onSubmit="prep_json()" method="POST">
+                      <!--<li><form class="d-flex" action="{{ url_for('save_list_items') }}"  id="send_data_form" onSubmit="prep_json()" method="POST">-->
+                      <li><form class="d-flex" id="send_data_form">
                       <input type="hidden" name="json_data" id="json_data">
-                      <button class="btn btn-outline-success" type="submit" id="submit_json_data" style="display: none;">Save list</button>
+                      <button class="btn btn-outline-success" onClick="doFetch()" type="button" id="submit_json_data" style="display: none;">Save</button>
                   </form>
 </li>
                     </ul>
@@ -478,7 +755,7 @@
                       <input type="hidden" name="json_field" id="json_field">
                       <button class="btn btn-outline-success" type="submit" id="registin_button">Login</button>
                   </form>
-                  <form class="d-flex" action="{{ url_for('logout') }}"  id="logout_form" method="POST">
+                  <form class="d-flex" action="{{ url_for('logout') }}"  onsubmit="query_save();" id="logout_form" method="POST">
                       <button class="btn btn-outline-success" type="submit" id="logout_button" style="display: none;">Logout</button>
                   </form>
 <script>
@@ -514,11 +791,11 @@
                                 <div class="row" id="item_form_row" style="white-space: nowrap; background: #bebe99; padding: 6px; border-radius: 10px; margin-right: 0px; display: none;">
                                     <div class="col-sm-3 item_form" style="text-align: center;">
                                         <h4>Due Date</h4>
-                                            <input type="date" id="date-picker" name="date_due">
+                                            <input type="date" id="date-picker" name="date_due" onChange="calculate_hours_left(this)" onKeyDown=false>
                                     </div>
                                     <div class="col-sm-3 item_form" style="text-align: center;">
-                                        <h4>Work Left (hrs)</h4>
-                                        <input type="text" placeholder="1-999" size="3" id="hours_left" name="hours_left" maxlength="3"> hours left
+                                        <h4>Hours Left</h4>
+                                        <input type="text" size="3" id="hours_left" name="hours_left" maxlength="4" readonly>
                                     </div>
                                     <div class="col-sm-3 item_form" style="display: inline-block;">
                                         <h4>Category</h4>
@@ -542,13 +819,16 @@
                                         </div>
                                     </div>
                                     <div class="col-sm-3 item_form" style="text-align: center;">
-                                        <button type="button" id="item_submit" class="btn btn-outline-success"  onClick="add_item_to_data()" id="hidden_submit">Submit</button>
+                                        <button type="button" id="item_submit" class="btn btn-outline-success"  onClick="if(document.getElementById('list_name').value === '') { alert('Field cannot be empty!'); document.getElementById('list_name').select(); return false; } else { add_item_to_data(); }" id="hidden_submit">Submit</button>
                                     </div>
                                     <input type="checkbox" id="item_chkbx" class="large" title="mark item done" onClick="mark_list_item(this)" style="display: none;">
-                                    <input type="text" id="field_template" class="entered_item" size="66" style="display: none;">
-                                    <img src="{{ url_for('static', filename='images/delete.png') }}" id="red_ex" class="right_end_item" width="20" height="20" onClick="delete_item(this)" title="Delete this entry" style="display: none;">
+                                    <input type="text" id="field_template" class="entered_item" size="66" style="display: none;" readonly>
+                                    <img src="/static_2/images/delete.png" id="red_ex" class="right_end_item" width="20" height="20" onClick="delete_item(this)" title="Delete this entry" style="display: none;">
                                 </div>
                 </form>
+		<!--<center><button onClick="alert('data[data].keys() is ' + JSON.stringify(data));">JSON.stringify(data)</button></center>-->
+		<!--<center><button onClick="alert(JSON.stringify(updates))">Show updates</button></center>-->
+		<!--<center><table border="2" width="200"><tr><td style="background-color: #FF000077;"><img width="98" height="98"></td><td style="background-color: #FFA50077"><img width="98" height="98"></td></tr><tr><td style="background-color: #FFFF0044;"></td><td style="background-color: #0000FF44;"><img width="98" height="98"></td></tr> </table></center>-->
                 <script>
                             if (data['data'].length > 0) {
                                 populate_ui();
