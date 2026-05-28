@@ -7,11 +7,10 @@ import json
 from uuid import uuid1
 
 SESSION_TIME = 1800
-data = {"session_id": -1, "data": []}
 n = 1
 
 db = SQLAlchemy()
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static_2')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///to_do_list.db'
 db.init_app(app)
 
@@ -24,7 +23,6 @@ class ToDoList(db.Model):
     # todo_json = db.Column(db.String(500), nullable=False)  # ??? what was this--the whole 'data' json?
     date_due = db.Column(db.String(250), nullable=False) # synthesized via datetime or whatever from month day year fields
     # date_created = db.Column(db.String(250), nullable=False)  /// don't think i have to know this per se
-    hours_left = db.Column(db.Integer, nullable=False)
     item_category = db.Column(db.String(250), nullable=False)
     item_done = db.Column(db.String(250), default='False', nullable=False)
     # priority = db.Column(db.Float, nullable=False)
@@ -43,7 +41,7 @@ with app.app_context():
 
 
 def jsonise(this_data):
-    my_data = {'session_id': data['session_id'], 'data': []}
+    my_data = {'session_id': -1, 'data': []}
     Columns = [column.key for column in ToDoList.__table__.columns]
     for record in this_data:
         a_record = {}
@@ -53,19 +51,22 @@ def jsonise(this_data):
     return my_data
 
 
-def process_list_items(user_email):
-    global data, n
+def process_list_items(user_email, data):
+    #global data, n
+    print("In process_list_items, data is " + json.dumps(data)),
     with app.app_context():
         for item in data['data']:
             if item['action'] == 'insert':
+                print("inserting list item in process_list_items")
                 db.session.execute(db.insert(ToDoList).values(user_email=user_email, list_name=item['list_name'],
-                        list_input=item['list_input'], item_category=item['item_category'], date_due=item['date_due'],
-                        hours_left=item['hours_left']))
+                        list_input=item['list_input'], item_category=item['item_category'], date_due=item['date_due']))
             elif item['action'] == 'delete':
                 db.session.execute(db.delete(ToDoList).where(ToDoList.user_email == user_email, ToDoList.list_name == item['list_name'],
                                                              ToDoList.list_input == item['list_input']))
             elif item['action'] == 'update':
-                record = db.session.execute(db.select(ToDoList).where(ToDoList.user_email == user_email, ToDoList.list_name == item['list_name'])).scalar()
+                record = db.session.execute(db.select(ToDoList).where(ToDoList.user_email == user_email, ToDoList.list_name == item['list_name'], ToDoList.list_input == item['list_input'])).scalar()
+                #record = db.session.execute(db.select(ToDoList).where(ToDoList.user_email == user_email, ToDoList.list_name == item['list_name'])).scalar()
+                print("in update clause of process_list_items, record[item_done] is " + record.item_done + " and item['item_done'] is "  + item['item_done']) 
                 record.item_done = item['item_done']
             db.session.commit()
 
@@ -74,36 +75,20 @@ def process_list_items(user_email):
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
-    global data
-    # print("fl.__version__ is " + fl.__version__)
-    # print("fsql.__version__ is " + fsql.__version__)
-    if data['session_id'] != -1:
-        session_id = data['session_id']
-        with app.app_context():
-            user_email = db.session.execute(db.select(Users.user_email).where(Users.session_id == session_id)).scalar()
-            print(f"user_email is {user_email}")
-            # last_record = db.session.execute(db.select(ToDoList).order_by(ToDoList.id.desc())).limit(1).scalar()
-            if len(user_email) > 0:
-                result = db.session.execute(db.select(ToDoList).where(ToDoList.user_email == user_email)).scalars()
-                if result != None:
-                    my_data = jsonise(result)
-                    json_data = json.dumps(my_data)
-                    data = json.loads(json_data)
-                    data['session_id'] = session_id
-                return render_template('index.html', data=data)
 
-    else:
-        data['data'] = []
-        data['session_id'] = -1
-        return render_template('index.html', data=data)
+    data = {"session_id": -1, "data": []}
+
+    return render_template('index.html', data=data)
 
 
 @app.route('/save_items', methods=['POST'])
 def save_list_items():
-    global data
-    json_data = request.form.get('json_data')
+    #global data
+    #json_data = request.form.get('json_data')
+    json_data = request.get_json()
+    #print(f"incoming json (/save_items) is {json_data}")
     print(f"incoming json (/save_items) is {json_data}")
-    data = json.loads(json_data)
+    data = json_data;
     with app.app_context():
         authenticate_result = db.session.execute(db.select(Users).where(Users.session_id == data['session_id'])).scalar()
         if authenticate_result is not None:
@@ -114,17 +99,46 @@ def save_list_items():
             else:
                 authenticate_result.last_transaction = time_now
                 db.session.commit()
-                process_list_items(authenticate_result.user_email)
-                return redirect('/flask_app_2')
+                process_list_items(authenticate_result.user_email, data)
+                #return redirect('/flask_app_2')
+            result = {"status": "success", "message": f"All actions completed so far as I know"}
+            return jsonify(result)
         else:
             data['session_id'] = -1
             data['data'] = []
             return redirect('/flask_app_2')
 
 
+@app.route('/save_item', methods=['POST'])
+def save_list_item():
+    #global data
+    data = request.get_json()
+    print(f"incoming json (/save_item) is " + json.dumps(data))
+    #data = json.loads(json_data)
+    with app.app_context():
+        authenticate_result = db.session.execute(db.select(Users).where(Users.session_id == data['session_id'])).scalar()
+        if authenticate_result is not None:
+            time_now = int(time.time())
+            if time_now - int(authenticate_result.last_transaction) > SESSION_TIME:
+                data['session_id'] = -1
+                return redirect('/flask_app_2/')
+            else:
+                authenticate_result.last_transaction = time_now
+                db.session.commit()
+                process_list_items(authenticate_result.user_email, data)
+            result = {"status": "success", "message": f"Set item_done to data['data'][0]['item_done']"}
+            return jsonify(result)
+        else:
+            data['session_id'] = -1
+            data['data'] = []
+            result = {"status": "failure", "message": "session_id did not authenticate."}
+            return jsonify(result)
+
+
+
 @app.route('/login', methods=['POST'])
 def do_login():
-    global data
+    #global data
     user_email = request.form.get("user_email")
     user_password = request.form.get("user_password")
     json_data = request.form.get('json_field')
@@ -140,22 +154,28 @@ def do_login():
             result = email_result
             result.session_id = session_id
             result.last_transaction = int(time.time())
-            print(f"result.session_id is {result.session_id}, result.last_transaction is {result.last_transaction}")
+            print(f"result.session_id is {result.session_id}, result.last_transaction is {result.last_transaction}\nemail_result is " + result.user_email)
             db.session.add(result)
             db.session.commit()
-            data['session_id'] = session_id
             if len(data['data']) > 0:
-                process_list_items(user_email)
+                process_list_items(user_email, data)
                 #all_data = db.session.execute(db.select(ToDoList).where(ToDoList.user_email == users.user_email)).scalars()
                 # json_data = jsonise(all_data)
                 # print(f"retval from jsonise is {json_data}")
                 # session_json = json.loads(json_data)
-            return redirect("/flask_app_2")
+            #return redirect("/flask_app_2")
+            result = db.session.execute(db.select(ToDoList).where(ToDoList.user_email == user_email)).scalars()
+            if result != None:
+                my_data = jsonise(result)
+                json_data = json.dumps(my_data)
+                data = json.loads(json_data)
+                data['session_id'] = session_id
         else:
             data['session_id'] = -1
             print("email_result must have been none.")
             print(f"data before render is: \n{data}")
-            return render_template('index.html', data=data)
+
+    return render_template('index.html', data=data)
 
 
 @app.route('/test', methods=['GET'])
@@ -165,14 +185,13 @@ def test():
 
 @app.route('/logout', methods=['POST'])
 def logout():
-    data['data'] = []
-    data['session_id'] = -1
+    data = {'session_id':-1, 'data':[] }
     return render_template('index.html', data=data)
 
 
 @app.route('/register', methods=['POST'])
 def do_register():
-    global data
+    #global data
     print("do_register() has been reached")
     users = Users()
     users.user_email = request.form.get("user_email")
@@ -187,7 +206,7 @@ def do_register():
     if json_data is not None:
         data = json.loads(json_data)
         if len(data['data']) > 0:
-            process_list_items(users.user_email)
+            process_list_items(users.user_email, data)
 
     data["session_id"] = users.session_id
     with app.app_context():
@@ -204,4 +223,3 @@ def do_register():
 
 if __name__ == '__main__':
     app.run()
-
